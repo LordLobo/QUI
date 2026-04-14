@@ -3036,10 +3036,12 @@ local function SetupMinimapDragging()
         -- addon's positioning is not overwritten.
         hooksecurefunc(minimapAnchor, "ClearAllPoints", function()
             if externalHudActive then return end
+            if Minimap:GetParent() ~= UIParent then return end -- external HUD (e.g. FarmHud) has reparented Minimap
             Minimap:ClearAllPoints()
         end)
         hooksecurefunc(minimapAnchor, "SetPoint", function(self, pt, relTo, relPt, ox, oy)
             if externalHudActive then return end
+            if Minimap:GetParent() ~= UIParent then return end -- external HUD (e.g. FarmHud) has reparented Minimap
             Minimap:SetPoint(pt, relTo, relPt, ox, oy)
         end)
     end
@@ -3635,8 +3637,10 @@ function Minimap_Module:Refresh()
     UpdateDungeonEyePosition()
     UpdateMiddleClickMenuOverlayState()
 
-    -- Restore saved position from profile — skip if the frame anchoring system owns this frame
-    if not (_G.QUI_HasFrameAnchor and _G.QUI_HasFrameAnchor("minimap")) then
+    -- Restore saved position from profile — skip if the frame anchoring system owns this frame,
+    -- or if an external HUD (e.g. FarmHud) has reparented Minimap away from UIParent.
+    if not (_G.QUI_HasFrameAnchor and _G.QUI_HasFrameAnchor("minimap"))
+        and Minimap:GetParent() == UIParent then
         if settings.position and settings.position[1] and settings.position[2] then
             local pt = settings.position[1]
             local relPt = settings.position[2]

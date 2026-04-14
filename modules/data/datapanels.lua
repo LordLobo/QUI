@@ -26,8 +26,10 @@ function Datapanels:CreatePanel(panelID, config)
         return self.activePanels[panelID]
     end
     
-    -- Create panel frame
-    local panel = CreateFrame("Frame", "QUI_Datapanel_" .. panelID, UIParent)
+    -- Create panel frame (reuse existing global if present — CreateFrame errors on duplicate names)
+    local frameName = "QUI_Datapanel_" .. panelID
+    local panel = _G[frameName] or CreateFrame("Frame", frameName, UIParent)
+    panel:SetParent(UIParent)
     panel:SetFrameStrata("LOW")
     panel:SetFrameLevel(100)
     panel:SetSize(config.width or 300, config.height or 22)

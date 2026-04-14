@@ -3555,6 +3555,15 @@ function QUI_UF:RefreshFrame(unitKey)
 end
 
 function QUI_UF:RefreshAll()
+    -- If unit frames are enabled but haven't been created yet (e.g. user
+    -- enabled the setting without reloading), run Initialize now to create
+    -- them rather than silently doing nothing.
+    local db = GetDB()
+    if db and db.enabled and not next(self.frames) then
+        self:Initialize()
+        return
+    end
+
     -- Track if we've refreshed boss frames to avoid doing it 5 times
     local bossRefreshed = false
 
@@ -3593,6 +3602,7 @@ function QUI_UF:Initialize()
     local unitFramesEnabled = db.enabled == true
     local standaloneActive = IsStandalonePlayerCastbarActive(db)
     if not unitFramesEnabled and not standaloneActive then
+        inInitSafeWindow = false
         return
     end
 

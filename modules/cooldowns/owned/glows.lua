@@ -113,9 +113,6 @@ local function RebuildGlowSpellMap()
     end
 end
 
--- SETTINGS ACCESS
----------------------------------------------------------------------------
-
 ---------------------------------------------------------------------------
 -- DETERMINE VIEWER TYPE FROM ICON
 -- Uses icon._spellEntry.viewerType instead of checking parent frame.
