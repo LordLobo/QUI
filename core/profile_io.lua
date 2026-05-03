@@ -472,9 +472,16 @@ local PROFILE_THEME_GENERAL_KEYS = {
     "defaultHealthOpacity",
     "defaultBgOpacity",
     "applyGlobalFontToBlizzard",
+    "overrideSCTFont",
 }
 
 local PROFILE_QOL_GENERAL_KEYS = {
+    "uiScale",
+    "allowReloadInCombat",
+    "autoInsertKey",
+    "consumableMacros",
+    "consumablePersistent",
+    "craftingOrderExpansionFilter",
     "sellJunk",
     "autoRepair",
     "autoRoleAccept",
@@ -532,6 +539,8 @@ local PROFILE_SKINNING_GENERAL_KEYS = {
     "skinKeystoneFrame",
     "skinGameMenu",
     "addQUIButton",
+    "addEditModeButton",
+    "objectiveTrackerClickThrough",
     "gameMenuFontSize",
     "gameMenuDim",
     "skinPowerBarAlt",
@@ -790,7 +799,7 @@ local PROFILE_IMPORT_CATEGORIES = {
         label = "Theme / Fonts / Colors",
         description = "Shared fonts, textures, dark mode, and addon-wide color settings.",
         recommended = false,
-        topLevelKeys = { "addonAccentColor", "powerColors" },
+        topLevelKeys = { "addonAccentColor", "powerColors", "themePreset" },
         generalKeys = PROFILE_THEME_GENERAL_KEYS,
     },
     {
@@ -798,7 +807,7 @@ local PROFILE_IMPORT_CATEGORIES = {
         label = "Layout / Positions",
         description = "Mover positions, HUD anchors, frame placement, and tracked element offsets.",
         recommended = false,
-        topLevelKeys = { "frameAnchoring", "dandersFrames", "abilityTimeline" },
+        topLevelKeys = { "frameAnchoring", "dandersFrames", "abilityTimeline", "blizzardMover", "layoutMode" },
         paths = PROFILE_LAYOUT_PATHS,
     },
     {
@@ -881,6 +890,10 @@ local PROFILE_IMPORT_CATEGORIES = {
             "customGlow",
             "buffBorders",
             "keybindOverridesEnabledCDM",
+            "powerBar",
+            "secondaryPowerBar",
+            "powerColors",
+            "cooldownHighlighter",
         },
         children = {
             { id = "cdmEssential", label = "Essential", description = "Essential cooldown rows and essential viewer settings.", paths = { "ncdm.essential" } },
@@ -917,7 +930,7 @@ local PROFILE_IMPORT_CATEGORIES = {
         label = "Action Bars",
         description = "Action bar styling, fade rules, and per-bar behavior.",
         recommended = true,
-        topLevelKeys = { "actionBars" },
+        topLevelKeys = { "actionBars", "actionBarsVisibility" },
         children = {
             {
                 id = "actionBarsMaster",
@@ -972,13 +985,13 @@ local PROFILE_IMPORT_CATEGORIES = {
         label = "Minimap / Datatexts",
         description = "Minimap, datatext panel, and extra datatext settings.",
         recommended = true,
-        topLevelKeys = { "minimap", "datatext", "quiDatatexts" },
+        topLevelKeys = { "minimap", "minimapButton", "datatext", "quiDatatexts" },
         children = {
             {
                 id = "minimapSubtab",
                 label = "Minimap",
                 description = "Minimap frame and minimap utility settings.",
-                topLevelKeys = { "minimap" },
+                topLevelKeys = { "minimap", "minimapButton" },
             },
             {
                 id = "datatextSubtab",
@@ -993,11 +1006,7 @@ local PROFILE_IMPORT_CATEGORIES = {
         label = "Custom CDM Bars",
         description = "Custom CDM bar settings and individual imported bars.",
         recommended = true,
-        topLevelKeys = { "customTrackersVisibility", "keybindOverridesEnabledTrackers" },
-        paths = {
-            "customTrackers.bars",
-            "customTrackers.keybinds",
-        },
+        topLevelKeys = { "customTrackers", "customTrackersVisibility", "keybindOverridesEnabledTrackers" },
         children = {
             {
                 id = "customTrackersShared",
@@ -1023,6 +1032,7 @@ local PROFILE_IMPORT_CATEGORIES = {
             "combatTimer",
             "xpTracker",
             "totemBar",
+            "preyTracker",
         },
     },
     {
@@ -1030,14 +1040,14 @@ local PROFILE_IMPORT_CATEGORIES = {
         label = "Chat",
         description = "Chat frame skinning, formatting, and utility options.",
         recommended = true,
-        topLevelKeys = { "chat" },
+        topLevelKeys = { "chat", "chatVisibility" },
     },
     {
         id = "qol",
         label = "QoL / Automation",
         description = "Automation helpers, popup blocker, consumables, and utility toggles.",
         recommended = true,
-        topLevelKeys = { "uiHider" },
+        topLevelKeys = { "uiHider", "configPanelWidth", "configPanelAlpha", "configPanelScale", "optionsPanelCollapsibleStates" },
         generalKeys = PROFILE_QOL_GENERAL_KEYS,
     },
     {
@@ -1243,12 +1253,12 @@ end
 
 local function ImportSelectedCustomTrackerBars(targetProfile, importedProfile, barIndexes)
     if type(targetProfile) ~= "table" or type(importedProfile) ~= "table" or type(barIndexes) ~= "table" then
-        return false
+        return false, nil
     end
 
     local importedBars = importedProfile.customTrackers and importedProfile.customTrackers.bars
     if type(importedBars) ~= "table" then
-        return false
+        return false, nil
     end
 
     if type(targetProfile.customTrackers) ~= "table" then
@@ -1259,19 +1269,24 @@ local function ImportSelectedCustomTrackerBars(targetProfile, importedProfile, b
     end
 
     local importedAny = false
+    local idMappings = {}
     for _, barIndex in ipairs(barIndexes) do
         local sourceBar = importedBars[barIndex]
         if type(sourceBar) == "table" then
             local clonedBar = CloneValue(sourceBar)
+            local sourceID = sourceBar.id
             if clonedBar.id then
                 clonedBar.id = GenerateUniqueTrackerID()
+            end
+            if sourceID ~= nil and clonedBar.id ~= nil then
+                idMappings[#idMappings + 1] = { sourceID = sourceID, targetID = clonedBar.id }
             end
             table.insert(targetProfile.customTrackers.bars, clonedBar)
             importedAny = true
         end
     end
 
-    return importedAny
+    return importedAny, idMappings
 end
 
 local function DetectProfileImportPrefix(str)
@@ -1541,11 +1556,92 @@ local function ExportSelectedCustomTrackerBars(targetProfile, sourceProfile, bar
     return exportedAny
 end
 
+-- ----------------------------------------------------------------------------
+-- Profile export-globals bundling
+--
+-- Tracker bar entries with specSpecificSpells live in db.global, not
+-- db.profile, so a profile-scoped export drops them and the importing
+-- player ends up with empty spec-specific bars. Bundle the relevant
+-- subtrees under a transient payload key so they round-trip with the
+-- profile string. Forward-compatible: V2 builds know to look for the
+-- same key and will re-home the data through their migration pipeline.
+-- ----------------------------------------------------------------------------
+local PROFILE_EXPORT_GLOBALS_KEY = "_quiBundledGlobals"
+
+local function CollectExportGlobals(globals)
+    if type(globals) ~= "table" then return nil end
+    local specTracker = globals.specTrackerSpells
+    if type(specTracker) ~= "table" or not next(specTracker) then
+        return nil
+    end
+    return { specTrackerSpells = CloneValue(specTracker) }
+end
+
+local function CollectExportGlobalsForBars(globals, barIDs)
+    if type(globals) ~= "table" or type(barIDs) ~= "table" or #barIDs == 0 then
+        return nil
+    end
+    local specTracker = globals.specTrackerSpells
+    if type(specTracker) ~= "table" then return nil end
+
+    local sliced = nil
+    for _, barID in ipairs(barIDs) do
+        local entries = barID ~= nil and specTracker[barID]
+        if type(entries) == "table" then
+            sliced = sliced or {}
+            sliced[barID] = CloneValue(entries)
+        end
+    end
+    if not sliced then return nil end
+    return { specTrackerSpells = sliced }
+end
+
+local function ApplyImportedGlobals(core, bundle)
+    if type(bundle) ~= "table" then return end
+    local globals = core and core.db and core.db.global
+    if type(globals) ~= "table" then return end
+
+    if type(bundle.specTrackerSpells) == "table" then
+        if type(globals.specTrackerSpells) ~= "table" then
+            globals.specTrackerSpells = {}
+        end
+        for barID, entries in pairs(bundle.specTrackerSpells) do
+            globals.specTrackerSpells[barID] = CloneValue(entries)
+        end
+    end
+end
+
+local function MergeImportedTrackerGlobalsWithMapping(core, bundle, idMappings)
+    if type(bundle) ~= "table" or type(idMappings) ~= "table" or #idMappings == 0 then return end
+    local globals = core and core.db and core.db.global
+    if type(globals) ~= "table" then return end
+    local sourceTracker = bundle.specTrackerSpells
+    if type(sourceTracker) ~= "table" then return end
+
+    if type(globals.specTrackerSpells) ~= "table" then
+        globals.specTrackerSpells = {}
+    end
+    for _, mapping in ipairs(idMappings) do
+        local sourceID = mapping.sourceID
+        local targetID = mapping.targetID
+        if sourceID ~= nil and targetID ~= nil then
+            local sourceEntries = sourceTracker[sourceID]
+            if type(sourceEntries) == "table" then
+                globals.specTrackerSpells[targetID] = CloneValue(sourceEntries)
+            end
+        end
+    end
+end
+
 local function ApplyFullProfilePayload(core, importedProfile)
     local profile = core and core.db and core.db.profile
     if type(profile) ~= "table" or type(importedProfile) ~= "table" then
         return false, "No profile loaded."
     end
+
+    -- Capture the bundled globals before the profile wipe so they survive
+    -- the loop below (the bundle key lives on the payload, not on profile).
+    local bundledGlobals = importedProfile[PROFILE_EXPORT_GLOBALS_KEY]
 
     for key in pairs(profile) do
         profile[key] = nil
@@ -1555,10 +1651,14 @@ local function ApplyFullProfilePayload(core, importedProfile)
         -- It refers to the source user's profile state and is meaningless
         -- here. A fresh backup will be created by the migration pipeline
         -- below if the imported data actually needs migrating.
-        if key ~= "_migrationBackup" then
+        -- Also exclude the transient bundle key — it's a payload carrier,
+        -- not a profile field.
+        if key ~= "_migrationBackup" and key ~= PROFILE_EXPORT_GLOBALS_KEY then
             profile[key] = CloneValue(value)
         end
     end
+
+    ApplyImportedGlobals(core, bundledGlobals)
 
     -- Run backward-compatibility migrations on the freshly imported data
     -- so that legacy keys (castBar, unitFrames, etc.) are moved to their
@@ -1659,8 +1759,22 @@ local function RunImportProfileSelection(core, payloadOrErr, selectedCategoryIDs
         ApplyProfileImportCategory(profile, payloadOrErr, category)
     end
 
-    if not selectedLookup.customTrackers and #selectedCustomTrackerBarIndexes > 0 then
-        ImportSelectedCustomTrackerBars(profile, payloadOrErr, selectedCustomTrackerBarIndexes)
+    if selectedLookup.customTrackers then
+        -- Whole-category import preserves bar IDs (the category copies
+        -- customTrackers.bars verbatim), so the bundled spec entries can
+        -- be applied without remapping.
+        local bundle = payloadOrErr[PROFILE_EXPORT_GLOBALS_KEY]
+        if type(bundle) == "table" then
+            ApplyImportedGlobals(core, bundle)
+        end
+    elseif #selectedCustomTrackerBarIndexes > 0 then
+        local _, idMappings = ImportSelectedCustomTrackerBars(profile, payloadOrErr, selectedCustomTrackerBarIndexes)
+        -- The bundled spec-tracker entries reference source bar IDs; remap to
+        -- the freshly-generated target IDs so live storage finds them.
+        local bundle = payloadOrErr[PROFILE_EXPORT_GLOBALS_KEY]
+        if type(bundle) == "table" and type(idMappings) == "table" and #idMappings > 0 then
+            MergeImportedTrackerGlobalsWithMapping(core, bundle, idMappings)
+        end
     end
 
     local function CategoryCanImportThemePath(category, path)
@@ -1784,6 +1898,23 @@ local function RunExportProfileSelection(core, selectedCategoryIDs)
         ExportSelectedCustomTrackerBars(exportPayload, profile, selectionData.customTrackerBarIndexes)
     end
 
+    -- Bundle spec-specific tracker entries for any tracker bars in the export.
+    -- Walk the bars actually being exported and slice db.global.specTrackerSpells
+    -- to just those IDs, so a partial profile export still carries working data.
+    local exportedBars = exportPayload.customTrackers and exportPayload.customTrackers.bars
+    if type(exportedBars) == "table" and #exportedBars > 0 then
+        local barIDs = {}
+        for _, bar in ipairs(exportedBars) do
+            if type(bar) == "table" and bar.id ~= nil and bar.specSpecificSpells then
+                barIDs[#barIDs + 1] = bar.id
+            end
+        end
+        local bundle = CollectExportGlobalsForBars(core.db.global, barIDs)
+        if bundle then
+            exportPayload[PROFILE_EXPORT_GLOBALS_KEY] = bundle
+        end
+    end
+
     return SerializeProfileExportPayload(exportPayload)
 end
 
@@ -1803,6 +1934,13 @@ function QUICore:ExportProfileToString()
         if k ~= "_migrationBackup" then
             payload[k] = v
         end
+    end
+
+    -- Bundle the spec-specific tracker entries that live on db.global so
+    -- the importing player gets working bars instead of empty ones.
+    local bundle = CollectExportGlobals(self.db.global)
+    if bundle then
+        payload[PROFILE_EXPORT_GLOBALS_KEY] = bundle
     end
 
     local exportString, exportErr = SerializeProfileExportPayload(payload)
