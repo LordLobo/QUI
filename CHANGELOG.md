@@ -15,6 +15,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
 
+
+
+## v3.5.9 - 2026-05-10
+
+### Added
+- added aura classification filters to unit frames buffs/debuffs (player and target)
+
+### Fixed
+- refresh aura cooldown caches on update in M+/raids
+- stabilized dungeon eye sizing during combat
+- fixed Blizzard font state across global font toggles
+## v3.5.8 - 2026-05-05
+
+### Changed
+- stabilized raid frame sorting and re-ordering behaviour
+
+### Fixed
+- fixed buff icon stack text to stay above borders
 ## v3.5.7 - 2026-05-03
 
 ### Fixed
