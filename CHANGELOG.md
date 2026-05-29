@@ -18,6 +18,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
 
+
+## v3.5.11 - 2026-05-28
+
+### Added
+- added configurable boss frame group layout (QUI Edit Mode > Boss Frames > Layout)
+
+### Fixed
+- fix: disconnect pandemic glow from per spell glow overrides (thx jopierce for the PR)
+- fix: custom entries UpdateIconCooldown state mgmt (thx Gholie for the PR)
 ## v3.5.10 - 2026-05-19
 
 ### Added
