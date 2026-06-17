@@ -3724,7 +3724,7 @@ local defaults = {
                 point = "BOTTOMLEFT", parent = "targetFrame", relative = "BOTTOMRIGHT",
                 offsetX = 0, offsetY = 0,
                 sizeStable = true, autoWidth = false, autoHeight = false,
-                hideWithParent = false,
+                hideWithParent = false, keepInPlace = true,
                 widthAdjust = 0, heightAdjust = 0,
             },
             petFrame = {

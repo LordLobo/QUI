@@ -1699,6 +1699,7 @@ function CDMBars:LayoutBars(container, settings)
         + (settings.textSize or 0) * 1009
         + ((settings.barOpacity or 1) * 10000)
         + ((settings.useClassColor and 1 or 0) * 100003)
+        + (settings.spacing or 2) * 10000007
     for _, bar in ipairs(barPool) do
         -- In edit/layout mode, force bar active BEFORE ConfigureBar so that
         -- inactive styling (alpha=0 for "hide" mode) doesn't apply.
@@ -1717,6 +1718,7 @@ function CDMBars:LayoutBars(container, settings)
         if bar._cfgFingerprint ~= cfgFingerprint or bar._cfgActive ~= bar._active then
             bar._cfgFingerprint = cfgFingerprint
             bar._cfgActive = bar._active
+            bar._lastPosKey = nil  -- force reposition when dimensions change
             CDMBars.ConfigureBar(bar, settings, barWidth)
         end
 

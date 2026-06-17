@@ -88,6 +88,7 @@ local _state = {
         UNIT_HEAL_PREDICTION = true,
         UNIT_NAME_UPDATE = true,
         UNIT_CONNECTION = true,
+        UNIT_PET = true,
     },
     unitEventList = {
         "UNIT_HEALTH",
@@ -100,6 +101,7 @@ local _state = {
         "UNIT_HEAL_PREDICTION",
         "UNIT_NAME_UPDATE",
         "UNIT_CONNECTION",
+        "UNIT_PET",
     },
     defaultColors = {
         darkHealth = { 0.15, 0.15, 0.15, 1 },
@@ -2185,6 +2187,109 @@ local function UpdateFrame(frame)
     UpdateDispelOverlay(frame)
     UpdateDefensiveIndicator(frame)
     UpdatePortrait(frame)
+end
+
+---------------------------------------------------------------------------
+-- PET SUB-FRAMES: Health bars anchored to each group member frame
+-- Two locals only (inlined helpers) to stay under Lua 5.1's 200-local limit.
+---------------------------------------------------------------------------
+
+QUI_GF.UpdatePetSubFrame = function(ownerFrame)
+    if not ownerFrame or not ownerFrame.healthBar then return end
+    local vdb    = GetVisualDB(ownerFrame._isRaid)
+    local petsDB = vdb and vdb.pets
+    if not (petsDB and petsDB.enabled) then
+        if ownerFrame._quiPetFrame then ownerFrame._quiPetFrame:Hide() end
+        return
+    end
+    local ownerUnit = ownerFrame.unit or ownerFrame:GetAttribute("unit")
+    if not ownerUnit then return end
+    local petUnit
+    if ownerUnit == "player" then
+        petUnit = "pet"
+    else
+        local pn = ownerUnit:match("^party(%d)$")
+        if pn then
+            petUnit = "partypet" .. pn
+        else
+            local rn = ownerUnit:match("^raid(%d+)$")
+            if rn then petUnit = "raidpet" .. rn end
+        end
+    end
+    if not petUnit then return end
+    local petFrame = ownerFrame._quiPetFrame
+    if not petFrame then
+        petFrame = CreateFrame("Frame", nil, ownerFrame, "BackdropTemplate")
+        petFrame._quiOwnerFrame = ownerFrame
+        petFrame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+        petFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+        petFrame:SetBackdropBorderColor(0, 0, 0, 1)
+        local hb = CreateFrame("StatusBar", nil, petFrame)
+        hb:SetPoint("TOPLEFT",     petFrame, "TOPLEFT",     1, -1)
+        hb:SetPoint("BOTTOMRIGHT", petFrame, "BOTTOMRIGHT", -1,  1)
+        ApplyStatusBarTexture(hb)
+        hb:SetMinMaxValues(0, 100)
+        hb:SetValue(100)
+        hb:SetStatusBarColor(0.2, 0.8, 0.2)
+        petFrame.healthBar = hb
+        local nt = hb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        nt:SetPoint("LEFT", 3, 0)
+        nt:SetTextColor(1, 1, 1, 1)
+        petFrame.nameText = nt
+        petFrame:SetScript("OnEvent", function(self, event)
+            local u = self._quiPetUnit
+            if not u or not UnitExists(u) then return end
+            if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
+                local hp = UnitHealth(u) or 0
+                local mx = math_max(UnitHealthMax(u) or 1, 1)
+                self.healthBar:SetMinMaxValues(0, mx)
+                self.healthBar:SetValue(hp)
+            elseif event == "UNIT_NAME_UPDATE" and self.nameText then
+                self.nameText:SetText(GetUnitName(u) or "")
+            end
+        end)
+        petFrame:Hide()
+        ownerFrame._quiPetFrame = petFrame
+    end
+    if petFrame._quiPetUnit ~= petUnit then
+        if petFrame._quiPetUnit then petFrame:UnregisterAllEvents() end
+        petFrame._quiPetUnit = petUnit
+        petFrame:RegisterUnitEvent("UNIT_HEALTH",      petUnit)
+        petFrame:RegisterUnitEvent("UNIT_MAXHEALTH",   petUnit)
+        petFrame:RegisterUnitEvent("UNIT_NAME_UPDATE", petUnit)
+    end
+    petFrame:SetSize(petsDB.width or 100, petsDB.height or 20)
+    petFrame:ClearAllPoints()
+    local gap = petsDB.anchorGap or 2
+    local anc = petsDB.anchorTo  or "BOTTOM"
+    if anc == "TOP" then
+        petFrame:SetPoint("BOTTOM", ownerFrame, "TOP",    0,    gap)
+    elseif anc == "LEFT" then
+        petFrame:SetPoint("RIGHT",  ownerFrame, "LEFT",  -gap,  0)
+    elseif anc == "RIGHT" then
+        petFrame:SetPoint("LEFT",   ownerFrame, "RIGHT",  gap,  0)
+    else
+        petFrame:SetPoint("TOP",    ownerFrame, "BOTTOM", 0,   -gap)
+    end
+    if UnitExists(petUnit) then
+        local hp = UnitHealth(petUnit) or 0
+        local mx = math_max(UnitHealthMax(petUnit) or 1, 1)
+        petFrame.healthBar:SetMinMaxValues(0, mx)
+        petFrame.healthBar:SetValue(hp)
+        if petFrame.nameText then
+            petFrame.nameText:SetText(GetUnitName(petUnit) or "")
+        end
+        petFrame:Show()
+    else
+        petFrame:Hide()
+    end
+end
+
+QUI_GF.UpdateAllPetSubFrames = function()
+    for _, list in pairs(QUI_GF.unitFrameMap) do
+        for i = 1, #list do QUI_GF.UpdatePetSubFrame(list[i]) end
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -4899,6 +5004,7 @@ local function GRU_DeferredWork()
     if GFA and GFA.PruneAuraCache then GFA.PruneAuraCache() end
     UpdateFrameScaling(true)
     QUI_GF:RefreshAllFrames()
+    QUI_GF.UpdateAllPetSubFrames()
     -- Ensure ticker is running (may not have started yet on first roster event)
     StartRangeCheck()
 end
@@ -5054,6 +5160,10 @@ local function OnEvent(self, event, arg1, ...)
             -- READY_CHECK_CONFIRM arg1 is a unit token — dispatch to all frames
             -- for that unit. GetReadyCheckStatus is per-unit, no cross-frame dep.
             for i = 1, nFrames do UpdateReadyCheck(frames[i]) end
+
+        elseif event == "UNIT_PET" then
+            -- arg1 is the owner unit; update that owner's pet sub-frame.
+            for i = 1, nFrames do QUI_GF.UpdatePetSubFrame(frames[i]) end
         end
         return
     end  -- end unit event block (type(arg1) == "string")
@@ -5571,6 +5681,7 @@ function QUI_GF:RefreshSettings()
     UpdateFrameScaling(true)
     UpdateHeaderSizes()
     UpdateSelectiveEvents()
+    QUI_GF.UpdateAllPetSubFrames()
 end
 
 ---------------------------------------------------------------------------
